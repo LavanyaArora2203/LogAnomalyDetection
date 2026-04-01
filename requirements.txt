@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+kafka-python
+redis
+elasticsearch
+scikit-learn
+pandas
+numpy
+python-dotenv
+pyod
