@@ -1,0 +1,39 @@
+Log Anomaly Detector — Feature Engineering Report
+=======================================================
+Generated at : 2026-04-03T20:00:24.145652+00:00
+Input file   : C:\Users\Lavanya\Desktop\LogAnomalyDetection\ML\..\data\logs_raw.csv
+Total rows   : 18,000
+Train rows   : 14,400  (80%)
+Test rows    : 3,600  (20%)
+Features     : 7
+Rolling window: 5min
+
+Features
+-------------------------------------------------------
+  response_time_ms               mean=   792.964  std= 2101.415
+  response_time_zscore           mean=    -0.000  std=    1.000
+  is_error                       mean=     0.221  std=    0.415
+  log_level_int                  mean=     0.500  std=    0.844
+  error_rate_5min                mean=     0.219  std=    0.118
+  avg_response_5min              mean=   795.956  std= 1049.374
+  request_count_per_ip           mean=   127.994  std=  154.439
+
+Scaler
+-------------------------------------------------------
+  Type: StandardScaler (zero mean, unit variance)
+  Fit on train set only (no data leakage)
+  Saved: ml/artifacts/scaler.joblib
+
+Anomaly Windows in Dataset
+-------------------------------------------------------
+  t=5–8min    payment-service 503 burst (payment_outage)
+  t=12–14min  auth-service latency spike (latency_spike)
+  t=20–22min  CRITICAL database failures (db_failure)
+  t=25–28min  scanner bot IP flood       (ip_flood)
+
+How to reload in production
+-------------------------------------------------------
+  import joblib, json
+  scaler       = joblib.load('ml/artifacts/scaler.joblib')
+  feature_names = json.load(open('ml/artifacts/feature_names.json'))
+  X_new_scaled = scaler.transform(X_new[feature_names])

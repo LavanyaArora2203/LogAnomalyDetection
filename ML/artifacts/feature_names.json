@@ -1,0 +1,9 @@
+[
+  "response_time_ms",
+  "response_time_zscore",
+  "is_error",
+  "log_level_int",
+  "error_rate_5min",
+  "avg_response_5min",
+  "request_count_per_ip"
+]
