@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log Anomaly Detector</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@300;400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg0: #080b10;
+            --bg1: #0d1117;
+            --bg2: #161b22;
+            --bg3: #1c2333;
+            --bg4: #21262d;
+            --border: rgba(255, 255, 255, 0.07);
+            --border-lit: rgba(255, 255, 255, 0.13);
+            --text0: #e6edf3;
+            --text1: #8b949e;
+            --text2: #484f58;
+            --cyan: #39d2ff;
+            --cyan-dim: rgba(57, 210, 255, 0.12);
+            --cyan-glow: rgba(57, 210, 255, 0.25);
+            --green: #3dd68c;
+            --green-dim: rgba(61, 214, 140, 0.12);
+            --amber: #f0a050;
+            --amber-dim: rgba(240, 160, 80, 0.12);
+            --red: #f85149;
+            --red-dim: rgba(248, 81, 73, 0.12);
+            --purple: #9371f7;
+            --mono: 'JetBrains Mono', monospace;
+            --sans: 'DM Sans', sans-serif;
+            --r: 6px;
+            --r-lg: 10px;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg0);
+            color: var(--text0);
+            font-family: var(--sans);
+            font-size: 14px;
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        /* Scanline overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(0deg,
+                    transparent,
+                    transparent 2px,
+                    rgba(0, 0, 0, 0.03) 2px,
+                    rgba(0, 0, 0, 0.03) 4px);
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        /* LAYOUT */
+        .shell {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 24px 48px;
+        }
+
+        /* HEADER */
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 0 16px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 24px;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .logo-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--cyan-dim);
+            border: 1px solid var(--cyan);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .logo-text {
+            font-family: var(--mono);
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            color: var(--cyan);
+        }
+
+        .logo-sub {
+            font-size: 11px;
+            color: var(--text2);
+            font-family: var(--mono);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 5px 12px 5px 8px;
+            border-radius: 20px;
+            border: 1px solid;
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            transition: all 0.3s;
+        }
+
+        .status-badge.healthy {
+            background: var(--green-dim);
+            border-color: rgba(61, 214, 140, 0.3);
+            color: var(--green);
+        }
+
+        .status-badge.degraded {
+            background: var(--amber-dim);
+            border-color: rgba(240, 160, 80, 0.3);
+            color: var(--amber);
+        }
+
+        .status-badge.unhealthy {
+            background: var(--red-dim);
+            border-color: rgba(248, 81, 73, 0.3);
+            color: var(--red);
+        }
+
+        .status-badge.loading {
+            background: var(--bg3);
+            border-color: var(--border);
+            color: var(--text2);
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .status-badge.healthy .status-dot {
+            background: var(--green);
+            box-shadow: 0 0 6px var(--green);
+            animation: pulse-green 2s infinite;
+        }
+
+        .status-badge.degraded .status-dot {
+            background: var(--amber);
+            box-shadow: 0 0 6px var(--amber);
+            animation: pulse-amber 2s infinite;
+        }
+
+        .status-badge.unhealthy .status-dot {
+            background: var(--red);
+            box-shadow: 0 0 6px var(--red);
+        }
+
+        .status-badge.loading .status-dot {
+            background: var(--text2);
+        }
+
+        @keyframes pulse-green {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: 0.4
+            }
+        }
+
+        @keyframes pulse-amber {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: 0.5
+            }
+        }
+
+        .refresh-info {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text2);
+            letter-spacing: 0.04em;
+        }
+
+        #tick-counter {
+            color: var(--text1);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ALERTS BANNER */
+        #alerts-banner {
+            display: none;
+            background: rgba(248, 81, 73, 0.08);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+            border-radius: var(--r-lg);
+            padding: 14px 18px;
+            margin-bottom: 20px;
+            animation: slide-in 0.3s ease;
+        }
+
+        @keyframes slide-in {
+            from {
+                opacity: 0;
+                transform: translateY(-8px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        .alert-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .alert-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--red);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .alert-pulse {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--red);
+            animation: pulse-red 1s infinite;
+        }
+
+        @keyframes pulse-red {
+
+            0%,
+            100% {
+                transform: scale(1);
+                opacity: 1
+            }
+
+            50% {
+                transform: scale(1.3);
+                opacity: 0.7
+            }
+        }
+
+        #alerts-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .alert-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--text1);
+            padding: 6px 0;
+            border-top: 1px solid rgba(248, 81, 73, 0.1);
+        }
+
+        .alert-severity-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 3px;
+            letter-spacing: 0.06em;
+            flex-shrink: 0;
+        }
+
+        .alert-severity-badge.CRITICAL {
+            background: rgba(248, 81, 73, 0.2);
+            color: var(--red);
+        }
+
+        .alert-severity-badge.HIGH {
+            background: rgba(240, 160, 80, 0.2);
+            color: var(--amber);
+        }
+
+        .alert-count {
+            color: var(--text0);
+            font-weight: 700;
+        }
+
+        .alert-time {
+            color: var(--text2);
+            margin-left: auto;
+        }
+
+        /* STATS GRID */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 800px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .stat-card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: var(--r-lg);
+            padding: 16px 18px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+
+        .stat-card:hover {
+            border-color: var(--border-lit);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            border-radius: 2px 2px 0 0;
+        }
+
+        .stat-card.accent-cyan::before {
+            background: var(--cyan);
+        }
+
+        .stat-card.accent-green::before {
+            background: var(--green);
+        }
+
+        .stat-card.accent-red::before {
+            background: var(--red);
+        }
+
+        .stat-card.accent-amber::before {
+            background: var(--amber);
+        }
+
+        .stat-label {
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 500;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text2);
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-family: var(--mono);
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1;
+            color: var(--text0);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .stat-card.accent-cyan .stat-value {
+            color: var(--cyan);
+        }
+
+        .stat-card.accent-green .stat-value {
+            color: var(--green);
+        }
+
+        .stat-card.accent-red .stat-value {
+            color: var(--red);
+        }
+
+        .stat-card.accent-amber .stat-value {
+            color: var(--amber);
+        }
+
+        .stat-sub {
+            font-size: 11px;
+            color: var(--text2);
+            margin-top: 6px;
+            font-family: var(--mono);
+        }
+
+        /* MAIN GRID */
+        .main-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 960px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* CARDS */
+        .card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: var(--r-lg);
+            overflow: hidden;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card-title {
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text1);
+        }
+
+        .card-badge {
+            font-family: var(--mono);
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            background: var(--bg4);
+            color: var(--text2);
+            border: 1px solid var(--border);
+        }
+
+        .card-body {
+            padding: 16px 18px;
+        }
+
+        /* CHART */
+        .chart-wrap {
+            position: relative;
+            height: 200px;
+        }
+
+        .chart-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--text2);
+            display: none;
+        }
+
+        .chart-overlay.visible {
+            display: flex;
+        }
+
+        /* MINI STATS IN CHART CARD */
+        .chart-mini-stats {
+            display: flex;
+            gap: 20px;
+            padding: 10px 18px 14px;
+            border-top: 1px solid var(--border);
+        }
+
+        .mini-stat {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+
+        .mini-stat-val {
+            font-family: var(--mono);
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .mini-stat-lbl {
+            font-size: 11px;
+            color: var(--text2);
+            font-family: var(--mono);
+        }
+
+        /* SERVICES TABLE */
+        .services-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .service-row {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+        }
+
+        .service-row:last-child {
+            border-bottom: none;
+        }
+
+        .service-name {
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--text0);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .service-bar-wrap {
+            grid-column: 1 / -1;
+            height: 3px;
+            background: var(--bg4);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 3px;
+        }
+
+        .service-bar {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }
+
+        .err-badge {
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 3px;
+            white-space: nowrap;
+        }
+
+        .err-low {
+            background: var(--green-dim);
+            color: var(--green);
+        }
+
+        .err-med {
+            background: var(--amber-dim);
+            color: var(--amber);
+        }
+
+        .err-high {
+            background: var(--red-dim);
+            color: var(--red);
+        }
+
+        .svc-rt {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text2);
+            white-space: nowrap;
+        }
+
+        /* ANOMALY TABLE */
+        .anomaly-table-wrap {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        thead th {
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text2);
+            text-align: left;
+            padding: 0 12px 10px;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        thead th:first-child {
+            padding-left: 0;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid var(--border);
+            transition: background 0.12s;
+        }
+
+        tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        tbody tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        tbody td {
+            padding: 9px 12px;
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--text1);
+            vertical-align: middle;
+            white-space: nowrap;
+            overflow: hidden;
+            max-width: 160px;
+            text-overflow: ellipsis;
+        }
+
+        tbody td:first-child {
+            padding-left: 0;
+        }
+
+        .td-time {
+            color: var(--text2);
+            font-size: 11px;
+        }
+
+        .td-service {
+            color: var(--text0);
+        }
+
+        .td-score {
+            font-weight: 700;
+        }
+
+        .score-pill {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .score-low {
+            background: var(--amber-dim);
+            color: var(--amber);
+        }
+
+        .score-med {
+            background: rgba(248, 81, 73, 0.15);
+            color: #ff6b5b;
+        }
+
+        .score-high {
+            background: var(--red-dim);
+            color: var(--red);
+        }
+
+        .level-tag {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 3px;
+            letter-spacing: 0.04em;
+        }
+
+        .level-ERROR {
+            background: var(--red-dim);
+            color: var(--red);
+        }
+
+        .level-CRITICAL {
+            background: rgba(147, 113, 247, 0.15);
+            color: var(--purple);
+        }
+
+        .level-WARN {
+            background: var(--amber-dim);
+            color: var(--amber);
+        }
+
+        .level-INFO {
+            background: var(--cyan-dim);
+            color: var(--cyan);
+        }
+
+        /* EMPTY STATES */
+        .empty-state {
+            padding: 32px 0;
+            text-align: center;
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--text2);
+        }
+
+        /* FOOTER */
+        footer {
+            padding: 20px 0;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .footer-left {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text2);
+            letter-spacing: 0.04em;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 16px;
+        }
+
+        .footer-links a {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text2);
+            text-decoration: none;
+            letter-spacing: 0.04em;
+            transition: color 0.15s;
+        }
+
+        .footer-links a:hover {
+            color: var(--cyan);
+        }
+
+        /* LOADING SHIMMER */
+        .shimmer {
+            background: linear-gradient(90deg, var(--bg3) 25%, var(--bg4) 50%, var(--bg3) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 4px;
+        }
+
+        @keyframes shimmer {
+            from {
+                background-position: 200% 0
+            }
+
+            to {
+                background-position: -200% 0
+            }
+        }
+
+        /* LAST UPDATED */
+        #last-updated {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text2);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="shell">
+
+        <!-- HEADER -->
+        <header>
+            <div class="logo-group">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M2 9 L7 4 L12 9 L7 14 Z" stroke="#39d2ff" stroke-width="1.5"
+                            fill="rgba(57,210,255,0.15)" />
+                        <path d="M7 9 L12 4 L17 9 L12 14 Z" stroke="rgba(57,210,255,0.4)" stroke-width="1.5"
+                            fill="rgba(57,210,255,0.06)" />
+                        <circle cx="7" cy="9" r="1.5" fill="#39d2ff" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="logo-text">ANOMALY.DETECT</div>
+                    <div class="logo-sub">Log Intelligence Dashboard</div>
+                </div>
+            </div>
+            <div class="header-right">
+                <div id="status-badge" class="status-badge loading">
+                    <span class="status-dot"></span>
+                    <span id="status-text">CONNECTING</span>
+                </div>
+                <div class="refresh-info">REFRESH <span id="tick-counter">10</span>s</div>
+                <div id="last-updated">—</div>
+            </div>
+        </header>
+
+        <!-- ALERTS BANNER -->
+        <div id="alerts-banner">
+            <div class="alert-header">
+                <div class="alert-title">
+                    <div class="alert-pulse"></div>
+                    ACTIVE ALERTS
+                </div>
+                <div id="alerts-count" style="font-family:var(--mono);font-size:11px;color:var(--red);">0 alerts</div>
+            </div>
+            <div id="alerts-list"></div>
+        </div>
+
+        <!-- STATS GRID -->
+        <div class="stats-grid">
+            <div class="stat-card accent-cyan">
+                <div class="stat-label">Total Logs · 1h</div>
+                <div class="stat-value" id="stat-total">—</div>
+                <div class="stat-sub" id="stat-total-sub">loading...</div>
+            </div>
+            <div class="stat-card accent-red">
+                <div class="stat-label">Error Rate</div>
+                <div class="stat-value" id="stat-error-rate">—</div>
+                <div class="stat-sub" id="stat-err-sub">loading...</div>
+            </div>
+            <div class="stat-card accent-amber">
+                <div class="stat-label">Anomalies · 1h</div>
+                <div class="stat-value" id="stat-anomaly-count">—</div>
+                <div class="stat-sub" id="stat-anom-sub">loading...</div>
+            </div>
+            <div class="stat-card accent-green">
+                <div class="stat-label">Avg Response</div>
+                <div class="stat-value" id="stat-avg-rt">—</div>
+                <div class="stat-sub" id="stat-rt-sub">loading...</div>
+            </div>
+        </div>
+
+        <!-- MAIN GRID: Timeline + Services -->
+        <div class="main-grid">
+
+            <!-- TIMELINE CHART -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Log Volume · 5-min buckets</span>
+                    <span class="card-badge" id="chart-last-update">loading</span>
+                </div>
+                <div class="card-body" style="padding-bottom:0;">
+                    <div class="chart-wrap">
+                        <canvas id="timeline-chart"></canvas>
+                        <div class="chart-overlay" id="chart-overlay">No data yet</div>
+                    </div>
+                </div>
+                <div class="chart-mini-stats" id="chart-mini-stats">
+                    <div class="mini-stat">
+                        <span class="mini-stat-val" id="ms-buckets" style="color:var(--cyan);">—</span>
+                        <span class="mini-stat-lbl">buckets</span>
+                    </div>
+                    <div class="mini-stat">
+                        <span class="mini-stat-val" id="ms-peak" style="color:var(--text0);">—</span>
+                        <span class="mini-stat-lbl">peak/5min</span>
+                    </div>
+                    <div class="mini-stat">
+                        <span class="mini-stat-val" id="ms-errors" style="color:var(--red);">—</span>
+                        <span class="mini-stat-lbl">errors</span>
+                    </div>
+                    <div class="mini-stat">
+                        <span class="mini-stat-val" id="ms-anomalies" style="color:var(--amber);">—</span>
+                        <span class="mini-stat-lbl">anomalies</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SERVICES PANEL -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Services · Error Rates</span>
+                    <span class="card-badge" id="svc-count">0 services</span>
+                </div>
+                <div class="card-body">
+                    <div id="services-list" class="services-list">
+                        <div class="empty-state">Loading services...</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- BOTTOM GRID: Anomalies table -->
+        <div class="card" style="margin-bottom:16px;">
+            <div class="card-header">
+                <span class="card-title">Recent Anomalies</span>
+                <span class="card-badge" id="anomaly-count-badge">0</span>
+            </div>
+            <div class="card-body" style="padding:0 18px;">
+                <div class="anomaly-table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Service</th>
+                                <th>Level</th>
+                                <th>RT (ms)</th>
+                                <th>Score</th>
+                                <th>Status</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody id="anomaly-tbody">
+                            <tr>
+                                <td colspan="7"
+                                    style="padding:28px 0;text-align:center;color:var(--text2);font-family:var(--mono);font-size:12px;">
+                                    Loading anomalies...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <footer>
+            <div class="footer-left">Log Anomaly Detector · Built with FastAPI + Elasticsearch + IsolationForest</div>
+            <div class="footer-links">
+                <a href="/docs" target="_blank">API Docs</a>
+                <a href="/redoc" target="_blank">ReDoc</a>
+                <a href="#" onclick="manualRefresh(); return false;">Force Refresh</a>
+            </div>
+        </footer>
+
+    </div>
+
+    <script>
+        const API = '';
+        let chart = null;
+        let tickInterval = null;
+        let tickValue = 10;
+        const REFRESH_MS = 10000;
+
+        async function fetchJSON(path) {
+            try {
+                const r = await fetch(API + path);
+                if (!r.ok) return null;
+                return await r.json();
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function fmt(n, decimals = 0) {
+            if (n === null || n === undefined || isNaN(n)) return '—';
+            return Number(n).toLocaleString('en-US', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals,
+            });
+        }
+
+        function fmtTime(iso) {
+            if (!iso) return '—';
+            try {
+                const d = new Date(iso);
+                return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            } catch { return iso.slice(11, 19); }
+        }
+
+        function now() {
+            return new Date().toLocaleTimeString('en-US', { hour12: false });
+        }
+
+        // ── Health ──────────────────────────────────────────────────
+        async function refreshHealth() {
+            const data = await fetchJSON('/health');
+            const badge = document.getElementById('status-badge');
+            const text = document.getElementById('status-text');
+            if (!data) {
+                badge.className = 'status-badge unhealthy';
+                text.textContent = 'OFFLINE';
+                return;
+            }
+            badge.className = `status-badge ${data.status}`;
+            text.textContent = data.status.toUpperCase();
+        }
+
+        // ── Stats (logs/stats for header cards) ────────────────────
+        async function refreshStats() {
+            const data = await fetchJSON('/logs/stats');
+            if (!data) {
+                ['stat-total', 'stat-error-rate', 'stat-anomaly-count', 'stat-avg-rt'].forEach(id => {
+                    document.getElementById(id).textContent = 'ERR';
+                });
+                return;
+            }
+
+            const total = data.window_size ?? 0;
+            const errRate = data.error_rate_pct ?? 0;
+            const slowRate = data.slow_rate_pct ?? 0;
+            const avgRt = data.avg_response_ms ?? 0;
+            const p95 = data.p95_response_ms ?? 0;
+            const byLevel = data.by_level ?? {};
+
+            document.getElementById('stat-total').textContent = fmt(total);
+            document.getElementById('stat-error-rate').textContent = fmt(errRate, 1) + '%';
+            document.getElementById('stat-avg-rt').textContent = fmt(Math.round(avgRt)) + 'ms';
+
+            const errCount = (byLevel.ERROR?.count ?? 0) + (byLevel.CRITICAL?.count ?? 0);
+            document.getElementById('stat-anomaly-count').textContent = fmt(errCount);
+
+            document.getElementById('stat-total-sub').textContent = `last ${total.toLocaleString()} logs`;
+            document.getElementById('stat-err-sub').textContent = `${fmt(slowRate, 1)}% slow requests`;
+            document.getElementById('stat-anom-sub').textContent = `ERROR + CRITICAL`;
+            document.getElementById('stat-rt-sub').textContent = `P95 ${fmt(Math.round(p95))}ms`;
+        }
+
+        // ── Timeline chart ──────────────────────────────────────────
+        function buildChart(ctx) {
+            return new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Total',
+                            data: [],
+                            backgroundColor: 'rgba(57,210,255,0.2)',
+                            borderColor: 'rgba(57,210,255,0.7)',
+                            borderWidth: 1,
+                            borderRadius: 2,
+                            order: 2,
+                        },
+                        {
+                            label: 'Errors',
+                            data: [],
+                            backgroundColor: 'rgba(248,81,73,0.35)',
+                            borderColor: 'rgba(248,81,73,0.7)',
+                            borderWidth: 1,
+                            borderRadius: 2,
+                            order: 1,
+                        },
+                        {
+                            label: 'Anomalies',
+                            type: 'line',
+                            data: [],
+                            borderColor: 'rgba(240,160,80,0.9)',
+                            backgroundColor: 'transparent',
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            pointBackgroundColor: 'rgba(240,160,80,0.9)',
+                            tension: 0.3,
+                            order: 0,
+                            yAxisID: 'y2',
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 400 },
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            align: 'end',
+                            labels: {
+                                font: { family: "'JetBrains Mono', monospace", size: 10 },
+                                color: '#8b949e',
+                                boxWidth: 10,
+                                boxHeight: 10,
+                                padding: 12,
+                                usePointStyle: true,
+                            },
+                        },
+                        tooltip: {
+                            backgroundColor: '#1c2333',
+                            borderColor: 'rgba(255,255,255,0.1)',
+                            borderWidth: 1,
+                            titleFont: { family: "'JetBrains Mono', monospace", size: 11 },
+                            bodyFont: { family: "'JetBrains Mono', monospace", size: 11 },
+                            titleColor: '#e6edf3',
+                            bodyColor: '#8b949e',
+                            padding: 10,
+                            callbacks: {
+                                label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y}`,
+                            },
+                        },
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
+                            ticks: {
+                                font: { family: "'JetBrains Mono', monospace", size: 10 },
+                                color: '#484f58',
+                                maxRotation: 0,
+                                maxTicksLimit: 8,
+                            },
+                        },
+                        y: {
+                            grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
+                            ticks: {
+                                font: { family: "'JetBrains Mono', monospace", size: 10 },
+                                color: '#484f58',
+                                precision: 0,
+                            },
+                            beginAtZero: true,
+                        },
+                        y2: {
+                            display: false,
+                            beginAtZero: true,
+                            position: 'right',
+                            grid: { drawOnChartArea: false },
+                        },
+                    },
+                },
+            });
+        }
+
+        async function refreshTimeline() {
+            const data = await fetchJSON('/stats/timeline?hours=1');
+            const overlay = document.getElementById('chart-overlay');
+
+            if (!data || !data.buckets || data.buckets.length === 0) {
+                overlay.className = 'chart-overlay visible';
+                overlay.textContent = 'No timeline data available';
+                return;
+            }
+
+            overlay.className = 'chart-overlay';
+            const buckets = data.buckets;
+
+            const labels = buckets.map(b => b.time);
+            const totals = buckets.map(b => b.total);
+            const errors = buckets.map(b => b.error_count);
+            const anomalies = buckets.map(b => b.anomaly_count);
+
+            const ctx = document.getElementById('timeline-chart');
+            if (!chart) { chart = buildChart(ctx); }
+
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = totals;
+            chart.data.datasets[1].data = errors;
+            chart.data.datasets[2].data = anomalies;
+            chart.update('active');
+
+            document.getElementById('chart-last-update').textContent = now();
+            document.getElementById('ms-buckets').textContent = buckets.length;
+            document.getElementById('ms-peak').textContent = fmt(Math.max(...totals));
+            document.getElementById('ms-errors').textContent = fmt(errors.reduce((a, b) => a + b, 0));
+            document.getElementById('ms-anomalies').textContent = fmt(anomalies.reduce((a, b) => a + b, 0));
+        }
+
+        // ── Services panel ──────────────────────────────────────────
+        async function refreshServices() {
+            const data = await fetchJSON('/stats/services?hours=1');
+            const container = document.getElementById('services-list');
+            const badge = document.getElementById('svc-count');
+
+            if (!data || !data.services || data.services.length === 0) {
+                container.innerHTML = '<div class="empty-state">No service data</div>';
+                badge.textContent = '0 services';
+                return;
+            }
+
+            const svcs = data.services;
+            badge.textContent = `${svcs.length} services`;
+            const maxVol = Math.max(...svcs.map(s => s.total), 1);
+
+            container.innerHTML = svcs.map(s => {
+                const errRate = s.error_rate_pct ?? 0;
+                const errClass = errRate > 10 ? 'err-high' : errRate > 3 ? 'err-med' : 'err-low';
+                const barWidth = Math.round(s.total / maxVol * 100);
+                const barColor = errRate > 10 ? 'var(--red)' : errRate > 3 ? 'var(--amber)' : 'var(--cyan)';
+                const avgRt = s.avg_response_ms ?? 0;
+                const name = s.service.replace('-service', '').toUpperCase();
+
+                return `
+      <div class="service-row">
+        <span class="service-name">${name}</span>
+        <span class="err-badge ${errClass}">${fmt(errRate, 1)}% err</span>
+        <span class="svc-rt">${fmt(Math.round(avgRt))}ms</span>
+        <div class="service-bar-wrap">
+          <div class="service-bar" style="width:${barWidth}%;background:${barColor};opacity:0.6;"></div>
+        </div>
+      </div>`;
+            }).join('');
+        }
+
+        // ── Anomalies table ─────────────────────────────────────────
+        async function refreshAnomalies() {
+            const data = await fetchJSON('/anomalies?limit=20');
+            const tbody = document.getElementById('anomaly-tbody');
+            const badge = document.getElementById('anomaly-count-badge');
+
+            if (!data || !data.logs || data.logs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" style="padding:28px 0;text-align:center;color:var(--text2);font-family:var(--mono);font-size:12px;">No anomalies detected</td></tr>`;
+                badge.textContent = '0';
+                return;
+            }
+
+            badge.textContent = data.total > 0 ? data.total.toLocaleString() : data.logs.length;
+
+            tbody.innerHTML = data.logs.map(log => {
+                const score = log.anomaly_score ?? 0;
+                const scoreClass = score > 0.3 ? 'score-high' : score > 0.15 ? 'score-med' : 'score-low';
+                const level = log.log_level ?? 'INFO';
+                const rt = log.response_time_ms ?? 0;
+                const msg = (log.message ?? '').slice(0, 45);
+                const service = (log.service_name ?? '').replace('-service', '');
+
+                return `
+      <tr>
+        <td class="td-time">${fmtTime(log.timestamp)}</td>
+        <td class="td-service">${service}</td>
+        <td><span class="level-tag level-${level}">${level}</span></td>
+        <td style="color:${rt > 3000 ? 'var(--red)' : rt > 1000 ? 'var(--amber)' : 'var(--text1)'}">${fmt(rt)}</td>
+        <td><span class="score-pill ${scoreClass}">${score.toFixed(3)}</span></td>
+        <td style="color:var(--text2)">${log.status_code ?? '—'}</td>
+        <td style="color:var(--text2);max-width:200px;">${msg}</td>
+      </tr>`;
+            }).join('');
+        }
+
+        // ── Alerts banner ────────────────────────────────────────────
+        async function refreshAlerts() {
+            const data = await fetchJSON('/alerts?limit=5');
+            const banner = document.getElementById('alerts-banner');
+            const list = document.getElementById('alerts-list');
+            const count = document.getElementById('alerts-count');
+
+            if (!data || !data.alerts || data.alerts.length === 0) {
+                banner.style.display = 'none';
+                return;
+            }
+
+            banner.style.display = 'block';
+            count.textContent = `${data.count} alert${data.count !== 1 ? 's' : ''}`;
+
+            list.innerHTML = data.alerts.map(a => {
+                const ts = fmtTime(a.timestamp);
+                const svc = (a.sample_log?.service_name ?? 'unknown').replace('-service', '');
+                const sevCls = a.severity === 'CRITICAL' ? 'CRITICAL' : 'HIGH';
+
+                return `
+      <div class="alert-item">
+        <span class="alert-severity-badge ${sevCls}">${a.severity}</span>
+        <span><span class="alert-count">${a.anomaly_count}</span> anomalies in ${a.window_seconds}s</span>
+        <span style="color:var(--cyan)">${svc}</span>
+        <span style="color:var(--text2)">${fmt(a.rate_per_min, 0)}/min</span>
+        <span class="alert-time">${ts}</span>
+      </div>`;
+            }).join('');
+        }
+
+        // ── Countdown ticker ─────────────────────────────────────────
+        function startTicker() {
+            clearInterval(tickInterval);
+            tickValue = 10;
+            document.getElementById('tick-counter').textContent = tickValue;
+            tickInterval = setInterval(() => {
+                tickValue--;
+                document.getElementById('tick-counter').textContent = tickValue;
+                if (tickValue <= 0) {
+                    refreshAll();
+                }
+            }, 1000);
+        }
+
+        // ── Full refresh ─────────────────────────────────────────────
+        async function refreshAll() {
+            startTicker();
+            document.getElementById('last-updated').textContent = now();
+
+            await Promise.allSettled([
+                refreshHealth(),
+                refreshStats(),
+                refreshTimeline(),
+                refreshServices(),
+                refreshAnomalies(),
+                refreshAlerts(),
+            ]);
+        }
+
+        function manualRefresh() {
+            clearInterval(tickInterval);
+            refreshAll();
+        }
+
+        // ── Boot ─────────────────────────────────────────────────────
+        refreshAll();
+    </script>
+</body>
+
+</html>
