@@ -8,3 +8,4 @@ pandas
 numpy
 python-dotenv
 pyod
+faker
