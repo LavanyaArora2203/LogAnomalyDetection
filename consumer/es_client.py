@@ -31,7 +31,7 @@ as the wrong type (e.g. auto-mapping an IP address as text).
   hour_of_day      integer        — temporal analytics
   day_of_week      integer
 """
-
+import os
 import json
 import logging
 import time

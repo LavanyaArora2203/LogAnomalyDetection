@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log Anomaly Detector</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@300;400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg0: #080b10;
+            --bg1: #0d1117;
+            --bg2: #161b22;
+            --bg3: #1c2333;
+            --bg4: #21262d;
+            --border: rgba(255, 255, 255, 0.07);
+            --border-lit: rgba(255, 255, 255, 0.13);
+            --text0: #e6edf3;
+            --text1: #8b949e;
+            --text2: #484f58;
+            --cyan: #39d2ff;
+            --cyan-d: rgba(57, 210, 255, 0.12);
+            --green: #3dd68c;
+            --green-d: rgba(61, 214, 140, 0.12);
+            --amber: #f0a050;
+            --amber-d: rgba(240, 160, 80, 0.12);
+            --red: #f85149;
+            --red-d: rgba(248, 81, 73, 0.12);
+            --purple: #9371f7;
+            --mono: 'JetBrains Mono', monospace;
+            --sans: 'DM Sans', sans-serif;
+            --r: 6px;
+            --rl: 10px;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+
+        body {
+            background: var(--bg0);
+            color: var(--text0);
+            font-family: var(--sans);
+            font-size: 14px;
+            min-height: 100vh;
+            line-height: 1.5
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, .03) 2px, rgba(0, 0, 0, .03) 4px);
+            pointer-events: none;
+            z-index: 999
+        }
+
+        .shell {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px 48px
+        }
+
+        /* HEADER */
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 0 14px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 20px;
+            gap: 12px;
+            flex-wrap: wrap
+        }
+
+        .logo-g {
+            display: flex;
+            align-items: center;
+            gap: 10px
+        }
+
+        .logo-icon {
+            width: 30px;
+            height: 30px;
+            background: var(--cyan-d);
+            border: 1px solid var(--cyan);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center
+        }
+
+        .logo-icon svg {
+            width: 16px;
+            height: 16px
+        }
+
+        .logo-text {
+            font-family: var(--mono);
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: .05em;
+            color: var(--cyan)
+        }
+
+        .logo-sub {
+            font-size: 10px;
+            color: var(--text2);
+            font-family: var(--mono);
+            letter-spacing: .08em;
+            text-transform: uppercase
+        }
+
+        .hdr-r {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap
+        }
+
+        .sb {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px 4px 7px;
+            border-radius: 20px;
+            border: 1px solid;
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            transition: all .3s
+        }
+
+        .sb.healthy {
+            background: var(--green-d);
+            border-color: rgba(61, 214, 140, .3);
+            color: var(--green)
+        }
+
+        .sb.degraded {
+            background: var(--amber-d);
+            border-color: rgba(240, 160, 80, .3);
+            color: var(--amber)
+        }
+
+        .sb.unhealthy {
+            background: var(--red-d);
+            border-color: rgba(248, 81, 73, .3);
+            color: var(--red)
+        }
+
+        .sb.loading {
+            background: var(--bg3);
+            border-color: var(--border);
+            color: var(--text2)
+        }
+
+        .sd {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            background: currentColor
+        }
+
+        .sb.healthy .sd {
+            box-shadow: 0 0 6px var(--green);
+            animation: pg 2s infinite
+        }
+
+        .sb.degraded .sd {
+            box-shadow: 0 0 6px var(--amber);
+            animation: pa 2s infinite
+        }
+
+        @keyframes pg {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: .4
+            }
+        }
+
+        @keyframes pa {
+
+            0%,
+            100% {
+                opacity: 1
+            }
+
+            50% {
+                opacity: .5
+            }
+        }
+
+        .wsb {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-family: var(--mono);
+            font-size: 10px;
+            padding: 4px 9px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            color: var(--text2);
+            transition: all .3s
+        }
+
+        .wsb.connected {
+            border-color: rgba(61, 214, 140, .3);
+            color: var(--green);
+            background: var(--green-d)
+        }
+
+        .wsb.connecting {
+            border-color: rgba(240, 160, 80, .2);
+            color: var(--amber)
+        }
+
+        .wsb.disconnected {
+            border-color: rgba(248, 81, 73, .2);
+            color: var(--red)
+        }
+
+        .wsd {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: currentColor
+        }
+
+        .wsb.connected .wsd {
+            animation: pg 1.5s infinite
+        }
+
+        .ri {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text2)
+        }
+
+        #tick {
+            color: var(--text1);
+            font-variant-numeric: tabular-nums
+        }
+
+        #lu {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text2)
+        }
+
+        /* ALERTS BANNER */
+        #ab {
+            display: none;
+            background: rgba(248, 81, 73, .07);
+            border: 1px solid rgba(248, 81, 73, .28);
+            border-radius: var(--rl);
+            padding: 12px 16px;
+            margin-bottom: 18px;
+            animation: si .3s ease
+        }
+
+        @keyframes si {
+            from {
+                opacity: 0;
+                transform: translateY(-8px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        .ah {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px
+        }
+
+        .at-ttl {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--red);
+            letter-spacing: .08em;
+            text-transform: uppercase
+        }
+
+        .apls {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--red);
+            animation: pr 1s infinite
+        }
+
+        @keyframes pr {
+
+            0%,
+            100% {
+                transform: scale(1)
+            }
+
+            50% {
+                transform: scale(1.3);
+                opacity: .7
+            }
+        }
+
+        #al {
+            display: flex;
+            flex-direction: column;
+            gap: 4px
+        }
+
+        .ai {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text1);
+            padding: 5px 0;
+            border-top: 1px solid rgba(248, 81, 73, .1)
+        }
+
+        .svb {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 3px;
+            letter-spacing: .05em;
+            flex-shrink: 0
+        }
+
+        .svb.CRITICAL {
+            background: rgba(248, 81, 73, .2);
+            color: var(--red)
+        }
+
+        .svb.HIGH {
+            background: rgba(240, 160, 80, .2);
+            color: var(--amber)
+        }
+
+        .atn {
+            color: var(--text2);
+            margin-left: auto
+        }
+
+        /* STATS GRID */
+        .sg {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 18px
+        }
+
+        @media(max-width:800px) {
+            .sg {
+                grid-template-columns: repeat(2, 1fr)
+            }
+        }
+
+        @media(max-width:480px) {
+            .sg {
+                grid-template-columns: 1fr
+            }
+        }
+
+        .sc {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: var(--rl);
+            padding: 14px 16px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color .2s
+        }
+
+        .sc:hover {
+            border-color: var(--border-lit)
+        }
+
+        .sc::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            border-radius: 2px 2px 0 0
+        }
+
+        .ac::before {
+            background: var(--cyan)
+        }
+
+        .ag::before {
+            background: var(--green)
+        }
+
+        .ar::before {
+            background: var(--red)
+        }
+
+        .aa::before {
+            background: var(--amber)
+        }
+
+        .sl {
+            font-family: var(--mono);
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--text2);
+            margin-bottom: 7px
+        }
+
+        .sv {
+            font-family: var(--mono);
+            font-size: 26px;
+            font-weight: 700;
+            letter-spacing: -.02em;
+            line-height: 1;
+            font-variant-numeric: tabular-nums
+        }
+
+        .ac .sv {
+            color: var(--cyan)
+        }
+
+        .ag .sv {
+            color: var(--green)
+        }
+
+        .ar .sv {
+            color: var(--red)
+        }
+
+        .aa .sv {
+            color: var(--amber)
+        }
+
+        .ss {
+            font-size: 10px;
+            color: var(--text2);
+            margin-top: 5px;
+            font-family: var(--mono)
+        }
+
+        /* SPINNER */
+        .spin {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid var(--border);
+            border-top-color: var(--cyan);
+            border-radius: 50%;
+            animation: sp .7s linear infinite;
+            vertical-align: middle;
+            margin-right: 4px
+        }
+
+        @keyframes sp {
+            to {
+                transform: rotate(360deg)
+            }
+        }
+
+        .lr {
+            display: flex;
+            align-items: center;
+            padding: 18px 0;
+            color: var(--text2);
+            font-family: var(--mono);
+            font-size: 11px;
+            justify-content: center
+        }
+
+        .es {
+            padding: 18px 0;
+            text-align: center;
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text2)
+        }
+
+        .es::before {
+            content: '⚠ ';
+            color: var(--amber)
+        }
+
+        /* MAIN GRID */
+        .mg {
+            display: grid;
+            grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+            gap: 14px;
+            margin-bottom: 14px
+        }
+
+        @media(max-width:960px) {
+            .mg {
+                grid-template-columns: 1fr
+            }
+        }
+
+        /* CARD */
+        .card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: var(--rl);
+            overflow: hidden;
+            margin-bottom: 14px
+        }
+
+        .ch {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px 10px;
+            border-bottom: 1px solid var(--border)
+        }
+
+        .ct {
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--text1)
+        }
+
+        .cb {
+            font-family: var(--mono);
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 3px;
+            background: var(--bg4);
+            color: var(--text2);
+            border: 1px solid var(--border)
+        }
+
+        .cbody {
+            padding: 14px 16px
+        }
+
+        /* CHART */
+        .cw {
+            position: relative;
+            height: 188px
+        }
+
+        .cm {
+            display: flex;
+            gap: 18px;
+            padding: 9px 16px 12px;
+            border-top: 1px solid var(--border)
+        }
+
+        .mv {
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 700
+        }
+
+        .ml {
+            font-size: 10px;
+            color: var(--text2);
+            font-family: var(--mono)
+        }
+
+        /* SERVICES */
+        .sr {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 0;
+            border-bottom: 1px solid var(--border)
+        }
+
+        .sr:last-child {
+            border-bottom: none
+        }
+
+        .sn {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text0);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap
+        }
+
+        .sbw {
+            grid-column: 1/-1;
+            height: 2px;
+            background: var(--bg4);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 2px
+        }
+
+        .sbar {
+            height: 100%;
+            border-radius: 2px;
+            transition: width .5s
+        }
+
+        .eb {
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 3px;
+            white-space: nowrap
+        }
+
+        .el {
+            background: var(--green-d);
+            color: var(--green)
+        }
+
+        .em {
+            background: var(--amber-d);
+            color: var(--amber)
+        }
+
+        .eh {
+            background: var(--red-d);
+            color: var(--red)
+        }
+
+        .srt {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text2);
+            white-space: nowrap
+        }
+
+        /* TABLES */
+        .tw {
+            overflow-x: auto
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px
+        }
+
+        thead th {
+            font-family: var(--mono);
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--text2);
+            text-align: left;
+            padding: 0 10px 9px;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap
+        }
+
+        thead th:first-child {
+            padding-left: 0
+        }
+
+        tbody tr {
+            border-bottom: 1px solid var(--border);
+            transition: background .1s
+        }
+
+        tbody tr:last-child {
+            border-bottom: none
+        }
+
+        tbody tr:hover {
+            background: rgba(255, 255, 255, .02)
+        }
+
+        tbody td {
+            padding: 8px 10px;
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text1);
+            vertical-align: middle;
+            white-space: nowrap;
+            overflow: hidden;
+            max-width: 160px;
+            text-overflow: ellipsis
+        }
+
+        tbody td:first-child {
+            padding-left: 0
+        }
+
+        .tdt {
+            color: var(--text2);
+            font-size: 10px
+        }
+
+        .scp {
+            display: inline-block;
+            padding: 2px 7px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 700
+        }
+
+        .spl {
+            background: var(--amber-d);
+            color: var(--amber)
+        }
+
+        .spm {
+            background: rgba(248, 81, 73, .15);
+            color: #ff6b5b
+        }
+
+        .sph {
+            background: var(--red-d);
+            color: var(--red)
+        }
+
+        .lt {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 3px;
+            letter-spacing: .04em
+        }
+
+        .lt-ERROR {
+            background: var(--red-d);
+            color: var(--red)
+        }
+
+        .lt-CRITICAL {
+            background: rgba(147, 113, 247, .15);
+            color: var(--purple)
+        }
+
+        .lt-WARN {
+            background: var(--amber-d);
+            color: var(--amber)
+        }
+
+        .lt-INFO {
+            background: var(--cyan-d);
+            color: var(--cyan)
+        }
+
+        /* LIVE FEED */
+        .lhdr {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 12px 16px 10px;
+            border-bottom: 1px solid var(--border)
+        }
+
+        .ll {
+            display: flex;
+            align-items: center;
+            gap: 10px
+        }
+
+        .ld {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--text2);
+            flex-shrink: 0;
+            transition: all .3s
+        }
+
+        .ld.act {
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green);
+            animation: pg 1s infinite
+        }
+
+        .lttl {
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--text1)
+        }
+
+        #lrate {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text2)
+        }
+
+        #lcb {
+            font-family: var(--mono);
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 3px;
+            background: var(--bg4);
+            color: var(--text2);
+            border: 1px solid var(--border)
+        }
+
+        /* Filter bar */
+        .fb-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 16px;
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap
+        }
+
+        .fl {
+            font-family: var(--mono);
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--text2);
+            white-space: nowrap
+        }
+
+        .fg {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap
+        }
+
+        .ffb {
+            font-family: var(--mono);
+            font-size: 10px;
+            padding: 3px 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text1);
+            cursor: pointer;
+            transition: all .15s;
+            white-space: nowrap
+        }
+
+        .ffb:hover {
+            border-color: var(--border-lit);
+            color: var(--text0)
+        }
+
+        .ffb.fon {
+            background: var(--cyan-d);
+            border-color: rgba(57, 210, 255, .4);
+            color: var(--cyan)
+        }
+
+        .ffb.fon-E {
+            background: var(--red-d);
+            border-color: rgba(248, 81, 73, .4);
+            color: var(--red)
+        }
+
+        .ffb.fon-W {
+            background: var(--amber-d);
+            border-color: rgba(240, 160, 80, .4);
+            color: var(--amber)
+        }
+
+        .ffb.fon-C {
+            background: rgba(147, 113, 247, .12);
+            border-color: rgba(147, 113, 247, .4);
+            color: var(--purple)
+        }
+
+        .ffb.fon-A {
+            background: rgba(248, 81, 73, .08);
+            border-color: rgba(248, 81, 73, .4);
+            color: var(--red)
+        }
+
+        .fsep {
+            width: 1px;
+            height: 16px;
+            background: var(--border);
+            flex-shrink: 0
+        }
+
+        .fcl {
+            font-family: var(--mono);
+            font-size: 10px;
+            padding: 3px 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text2);
+            cursor: pointer;
+            transition: color .15s
+        }
+
+        .fcl:hover {
+            color: var(--amber)
+        }
+
+        /* Live scroll */
+        .lto {
+            position: relative;
+            height: 320px;
+            overflow: hidden
+        }
+
+        .lts {
+            height: 100%;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--bg4) transparent
+        }
+
+        .lts::-webkit-scrollbar {
+            width: 4px
+        }
+
+        .lts::-webkit-scrollbar-thumb {
+            background: var(--bg4);
+            border-radius: 2px
+        }
+
+        .lts table thead th {
+            position: sticky;
+            top: 0;
+            background: var(--bg2);
+            z-index: 2;
+            padding-bottom: 8px
+        }
+
+        /* Row animations */
+        .rn {
+            animation: rf .8s ease forwards
+        }
+
+        @keyframes rf {
+            from {
+                background: rgba(57, 210, 255, .12)
+            }
+
+            to {
+                background: transparent
+            }
+        }
+
+        .ra {
+            background: rgba(248, 81, 73, .06) !important
+        }
+
+        .ra:hover {
+            background: rgba(248, 81, 73, .1) !important
+        }
+
+        .ra.rn {
+            animation: raf .8s ease forwards
+        }
+
+        @keyframes raf {
+            from {
+                background: rgba(248, 81, 73, .25)
+            }
+
+            to {
+                background: rgba(248, 81, 73, .06)
+            }
+        }
+
+        .rh {
+            display: none
+        }
+
+        /* Scroll lock btn */
+        .slb {
+            font-family: var(--mono);
+            font-size: 10px;
+            padding: 3px 9px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text2);
+            cursor: pointer;
+            transition: all .15s;
+            white-space: nowrap
+        }
+
+        .slb.lkd {
+            border-color: rgba(57, 210, 255, .3);
+            color: var(--cyan);
+            background: var(--cyan-d)
+        }
+
+        /* FOOTER */
+        footer {
+            padding: 16px 0;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px
+        }
+
+        .fl2 {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text2)
+        }
+
+        .flinks {
+            display: flex;
+            gap: 14px
+        }
+
+        .flinks a {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text2);
+            text-decoration: none;
+            transition: color .15s
+        }
+
+        .flinks a:hover {
+            color: var(--cyan)
+        }
+    </style>
+</head>
+
+<body>
+    <div class="shell">
+
+        <header>
+            <div class="logo-g">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 18 18" fill="none">
+                        <path d="M2 9L7 4L12 9L7 14Z" stroke="#39d2ff" stroke-width="1.5"
+                            fill="rgba(57,210,255,0.15)" />
+                        <path d="M7 9L12 4L17 9L12 14Z" stroke="rgba(57,210,255,0.4)" stroke-width="1.5"
+                            fill="rgba(57,210,255,0.06)" />
+                        <circle cx="7" cy="9" r="1.5" fill="#39d2ff" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="logo-text">ANOMALY.DETECT</div>
+                    <div class="logo-sub">Log Intelligence Dashboard</div>
+                </div>
+            </div>
+            <div class="hdr-r">
+                <div id="stbadge" class="sb loading"><span class="sd"></span><span id="sttext">CONNECTING</span></div>
+                <div id="wsbadge" class="wsb connecting"><span class="wsd"></span><span id="wstext">WS—</span></div>
+                <div class="ri">POLL <span id="tick">10</span>s</div>
+                <div id="lu">—</div>
+            </div>
+        </header>
+
+        <div id="ab">
+            <div class="ah">
+                <div class="at-ttl">
+                    <div class="apls"></div>ACTIVE ALERTS
+                </div>
+                <div id="act" style="font-family:var(--mono);font-size:10px;color:var(--red)">0</div>
+            </div>
+            <div id="al"></div>
+        </div>
+
+        <div class="sg">
+            <div class="sc ac">
+                <div class="sl">Total Logs · 1h</div>
+                <div class="sv" id="st">—</div>
+                <div class="ss" id="sts">loading...</div>
+            </div>
+            <div class="sc ar">
+                <div class="sl">Error Rate</div>
+                <div class="sv" id="se">—</div>
+                <div class="ss" id="ses">loading...</div>
+            </div>
+            <div class="sc aa">
+                <div class="sl">Anomalies · 1h</div>
+                <div class="sv" id="sa">—</div>
+                <div class="ss" id="sas">loading...</div>
+            </div>
+            <div class="sc ag">
+                <div class="sl">Avg Response</div>
+                <div class="sv" id="sr">—</div>
+                <div class="ss" id="srs">loading...</div>
+            </div>
+        </div>
+
+        <div class="mg">
+            <div class="card" style="margin-bottom:0">
+                <div class="ch"><span class="ct">Log Volume · 5-min buckets</span><span class="cb" id="cupd"><span
+                            class="spin"></span>loading</span></div>
+                <div class="cbody" style="padding-bottom:0">
+                    <div class="cw"><canvas id="tc"></canvas></div>
+                </div>
+                <div class="cm">
+                    <div><span class="mv" id="msb" style="color:var(--cyan)">—</span> <span class="ml">buckets</span>
+                    </div>
+                    <div><span class="mv" id="msp" style="color:var(--text0)">—</span> <span class="ml">peak/5min</span>
+                    </div>
+                    <div><span class="mv" id="mse" style="color:var(--red)">—</span> <span class="ml">errors</span>
+                    </div>
+                    <div><span class="mv" id="msa" style="color:var(--amber)">—</span> <span class="ml">anomalies</span>
+                    </div>
+                </div>
+            </div>
+            <div class="card" style="margin-bottom:0">
+                <div class="ch"><span class="ct">Services · Error Rates</span><span class="cb" id="svct">—</span></div>
+                <div class="cbody">
+                    <div id="svl">
+                        <div class="lr"><span class="spin"></span>Loading services...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="ch"><span class="ct">Recent Anomalies</span><span class="cb" id="act2">0</span></div>
+            <div class="cbody" style="padding:0 16px">
+                <div class="tw">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Service</th>
+                                <th>Level</th>
+                                <th>RT (ms)</th>
+                                <th>Score</th>
+                                <th>HTTP</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody id="atb">
+                            <tr>
+                                <td colspan="7">
+                                    <div class="lr"><span class="spin"></span>Loading...</div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="lhdr">
+                <div class="ll">
+                    <div class="ld" id="ldo"></div>
+                    <span class="lttl">Live Log Feed</span>
+                    <span id="lrate"></span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                    <span id="lcb">0 / 50</span>
+                    <button class="slb lkd" id="slbtn" onclick="toggleLock()">⬇ SCROLL</button>
+                </div>
+            </div>
+
+            <div class="fb-bar">
+                <span class="fl">Level</span>
+                <div class="fg" id="lf">
+                    <button class="ffb fon" data-lv="" onclick="setLvlF(this,'')">ALL</button>
+                    <button class="ffb" data-lv="INFO" onclick="setLvlF(this,'INFO')">INFO</button>
+                    <button class="ffb" data-lv="WARN" onclick="setLvlF(this,'WARN')">WARN</button>
+                    <button class="ffb" data-lv="ERROR" onclick="setLvlF(this,'ERROR')">ERROR</button>
+                    <button class="ffb" data-lv="CRITICAL" onclick="setLvlF(this,'CRITICAL')">CRIT</button>
+                </div>
+                <div class="fsep"></div>
+                <span class="fl">Filter</span>
+                <div class="fg">
+                    <button class="ffb" id="af" onclick="toggleAF()">ANOMALIES ONLY</button>
+                </div>
+                <div class="fsep"></div>
+                <span class="fl">Service</span>
+                <select id="svf" onchange="updF()"
+                    style="font-family:var(--mono);font-size:10px;background:var(--bg3);color:var(--text1);border:1px solid var(--border);border-radius:4px;padding:3px 8px;cursor:pointer">
+                    <option value="">All</option>
+                </select>
+                <div class="fsep"></div>
+                <button class="fcl" onclick="clrF()">CLEAR</button>
+            </div>
+
+            <div class="lto">
+                <div class="lts" id="lscr">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Service</th>
+                                <th>Level</th>
+                                <th>RT</th>
+                                <th>Score</th>
+                                <th>HTTP</th>
+                                <th>IP</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ltb"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <div class="fl2">Log Anomaly Detector · FastAPI + Elasticsearch + IsolationForest</div>
+            <div class="flinks">
+                <a href="/docs" target="_blank">API Docs</a>
+                <a href="/ws/stats" target="_blank">WS Stats</a>
+                <a href="#" onclick="manualRefresh();return false">Force Refresh</a>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        const API = '';
+        const WS_URL = `ws://${location.host}/ws/logs`;
+        const MAX_LIVE = 50;
+        let chart = null, ws = null, wsDelay = 1000;
+        let tickVal = 10, tickT = null;
+        let locked = true, lvlF = '', anomF = false, svcF = '';
+        let liveCount = 0, rateT = null, rateN = 0;
+        let knownSvcs = new Set();
+
+        const $ = id => document.getElementById(id);
+        const fmt = (n, d = 0) => n == null || isNaN(n) ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+        const fmtT = iso => { try { const d = new Date(iso); return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) } catch { return (iso || '').slice(11, 19) } };
+        const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const nowS = () => new Date().toLocaleTimeString('en-US', { hour12: false });
+
+        async function jfetch(path) {
+            try { const r = await fetch(API + path); if (!r.ok) throw new Error(r.status); return await r.json() } catch { return null }
+        }
+
+        async function refreshHealth() {
+            const d = await jfetch('/health');
+            const b = $('stbadge');
+            if (!d) { b.className = 'sb unhealthy'; $('sttext').textContent = 'OFFLINE'; return }
+            b.className = `sb ${d.status}`; $('sttext').textContent = d.status.toUpperCase();
+        }
+
+        async function refreshStats() {
+            const d = await jfetch('/logs/stats');
+            if (!d) { ['st', 'se', 'sa', 'sr'].forEach(id => $(id).textContent = 'ERR'); return }
+            const bl = d.by_level || {};
+            $('st').textContent = fmt(d.window_size);
+            $('se').textContent = fmt(d.error_rate_pct, 1) + '%';
+            $('sr').textContent = fmt(Math.round(d.avg_response_ms || 0)) + 'ms';
+            const ec = (bl.ERROR?.count || 0) + (bl.CRITICAL?.count || 0);
+            $('sa').textContent = fmt(ec);
+            $('sts').textContent = `window: ${fmt(d.window_size)} logs`;
+            $('ses').textContent = `${fmt(d.slow_rate_pct, 1)}% slow`;
+            $('sas').textContent = 'ERROR + CRITICAL';
+            $('srs').textContent = `P95: ${fmt(Math.round(d.p95_response_ms || 0))}ms`;
+        }
+
+        function buildChart(ctx) {
+            return new Chart(ctx, {
+                type: 'bar', data: {
+                    labels: [], datasets: [
+                        { label: 'Total', data: [], backgroundColor: 'rgba(57,210,255,0.18)', borderColor: 'rgba(57,210,255,0.6)', borderWidth: 1, borderRadius: 2, order: 2 },
+                        { label: 'Errors', data: [], backgroundColor: 'rgba(248,81,73,0.32)', borderColor: 'rgba(248,81,73,0.65)', borderWidth: 1, borderRadius: 2, order: 1 },
+                        { label: 'Anomalies', type: 'line', data: [], borderColor: 'rgba(240,160,80,0.9)', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 3, pointBackgroundColor: 'rgba(240,160,80,0.9)', tension: 0.3, order: 0, yAxisID: 'y2' },
+                    ]
+                }, options: {
+                    responsive: true, maintainAspectRatio: false, animation: { duration: 350 }, interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: true, position: 'top', align: 'end', labels: { font: { family: "'JetBrains Mono',monospace", size: 10 }, color: '#8b949e', boxWidth: 9, boxHeight: 9, padding: 10, usePointStyle: true } },
+                        tooltip: { backgroundColor: '#1c2333', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1, titleFont: { family: "'JetBrains Mono',monospace", size: 11 }, bodyFont: { family: "'JetBrains Mono',monospace", size: 11 }, titleColor: '#e6edf3', bodyColor: '#8b949e', padding: 9, callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y}` } }
+                    },
+                    scales: {
+                        x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { font: { family: "'JetBrains Mono',monospace", size: 10 }, color: '#484f58', maxRotation: 0, maxTicksLimit: 8 } },
+                        y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { font: { family: "'JetBrains Mono',monospace", size: 10 }, color: '#484f58', precision: 0 }, beginAtZero: true },
+                        y2: { display: false, beginAtZero: true, position: 'right', grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+        }
+
+        async function refreshTimeline() {
+            const d = await jfetch('/stats/timeline?hours=1');
+            if (!d || !d.buckets?.length) { $('cupd').textContent = 'No data'; return }
+            const bk = d.buckets;
+            if (!chart) chart = buildChart($('tc'));
+            chart.data.labels = bk.map(b => b.time);
+            chart.data.datasets[0].data = bk.map(b => b.total);
+            chart.data.datasets[1].data = bk.map(b => b.error_count);
+            chart.data.datasets[2].data = bk.map(b => b.anomaly_count);
+            chart.update('active');
+            $('cupd').textContent = nowS();
+            $('msb').textContent = bk.length;
+            $('msp').textContent = fmt(Math.max(...bk.map(b => b.total), 0));
+            $('mse').textContent = fmt(bk.reduce((a, b) => a + b.error_count, 0));
+            $('msa').textContent = fmt(bk.reduce((a, b) => a + b.anomaly_count, 0));
+        }
+
+        async function refreshServices() {
+            const el = $('svl');
+            const d = await jfetch('/stats/services?hours=1');
+            if (!d || !d.services?.length) { el.innerHTML = '<div class="es">No service data</div>'; $('svct').textContent = '—'; return }
+            $('svct').textContent = `${d.services.length} svcs`;
+            const mx = Math.max(...d.services.map(s => s.total), 1);
+            el.innerHTML = d.services.map(s => {
+                const er = s.error_rate_pct || 0;
+                const ec = er > 10 ? 'eh' : er > 3 ? 'em' : 'el';
+                const bw = Math.round(s.total / mx * 100);
+                const bc = er > 10 ? 'var(--red)' : er > 3 ? 'var(--amber)' : 'var(--cyan)';
+                const nm = s.service.replace('-service', '').toUpperCase();
+                return `<div class="sr"><span class="sn">${nm}</span><span class="eb ${ec}">${fmt(er, 1)}% err</span><span class="srt">${fmt(Math.round(s.avg_response_ms || 0))}ms</span><div class="sbw"><div class="sbar" style="width:${bw}%;background:${bc};opacity:.6"></div></div></div>`;
+            }).join('');
+            d.services.forEach(s => {
+                if (!knownSvcs.has(s.service)) {
+                    knownSvcs.add(s.service);
+                    const o = document.createElement('option');
+                    o.value = s.service; o.textContent = s.service.replace('-service', '');
+                    $('svf').appendChild(o);
+                }
+            });
+        }
+
+        async function refreshAnomalies() {
+            const tb = $('atb');
+            const d = await jfetch('/anomalies?limit=20');
+            if (!d || !d.logs?.length) { tb.innerHTML = '<tr><td colspan="7"><div class="es">No anomalies detected</div></td></tr>'; $('act2').textContent = '0'; return }
+            $('act2').textContent = d.total || d.logs.length;
+            tb.innerHTML = d.logs.map(log => {
+                const sc = log.anomaly_score || 0;
+                const scc = sc > .3 ? 'sph' : sc > .15 ? 'spm' : 'spl';
+                const lv = log.log_level || 'INFO';
+                const rt = log.response_time_ms || 0;
+                const rc = rt > 3000 ? 'var(--red)' : rt > 1000 ? 'var(--amber)' : 'var(--text1)';
+                return `<tr>
+      <td class="tdt">${fmtT(log.timestamp)}</td>
+      <td style="color:var(--text0)">${esc((log.service_name || '').replace('-service', ''))}</td>
+      <td><span class="lt lt-${lv}">${lv}</span></td>
+      <td style="color:${rc}">${fmt(rt)}</td>
+      <td><span class="scp ${scc}">${sc.toFixed(3)}</span></td>
+      <td style="color:var(--text2)">${log.status_code || '—'}</td>
+      <td style="color:var(--text2)">${esc((log.message || '').slice(0, 42))}</td>
+    </tr>`;
+            }).join('');
+        }
+
+        async function refreshAlerts() {
+            const d = await jfetch('/alerts?limit=5');
+            const banner = $('ab');
+            if (!d || !d.alerts?.length) { banner.style.display = 'none'; return }
+            banner.style.display = 'block';
+            $('act').textContent = `${d.count} alert${d.count !== 1 ? 's' : ''}`;
+            $('al').innerHTML = d.alerts.map(a => `
+    <div class="ai">
+      <span class="svb ${a.severity}">${a.severity}</span>
+      <span><b style="color:var(--text0)">${a.anomaly_count}</b> in ${a.window_seconds}s</span>
+      <span style="color:var(--cyan)">${(a.sample_log?.service_name || '').replace('-service', '')}</span>
+      <span style="color:var(--text2)">${fmt(a.rate_per_min, 0)}/min</span>
+      <span class="atn">${fmtT(a.timestamp)}</span>
+    </div>`).join('');
+        }
+
+        /* ── Live feed ── */
+        function rowVis(tr) {
+            const ok = (!lvlF || tr.dataset.lv === lvlF) && (!anomF || tr.dataset.an === '1') && (!svcF || tr.dataset.sv === svcF);
+            tr.classList.toggle('rh', !ok);
+            return ok;
+        }
+
+        function pushLog(log) {
+            liveCount++; rateN++;
+            if (!log.service_name) return;
+
+            const sc = log.anomaly_score || 0;
+            const scc = sc > .3 ? 'sph' : sc > .15 ? 'spm' : 'spl';
+            const lv = log.log_level || 'INFO';
+            const rt = log.response_time_ms || 0;
+            const rc = rt > 3000 ? 'var(--red)' : rt > 1000 ? 'var(--amber)' : 'var(--text1)';
+            const isA = log.is_anomaly;
+
+            const tr = document.createElement('tr');
+            tr.className = (isA ? 'ra ' : '') + 'rn';
+            tr.dataset.lv = lv; tr.dataset.sv = log.service_name || ''; tr.dataset.an = isA ? '1' : '0';
+
+            tr.innerHTML = `<td class="tdt">${fmtT(log.timestamp)}</td>
+    <td style="color:var(--text0)">${esc((log.service_name || '').replace('-service', ''))}</td>
+    <td><span class="lt lt-${lv}">${lv}</span></td>
+    <td style="color:${rc}">${fmt(rt)}</td>
+    <td><span class="scp ${scc}">${typeof sc === 'number' ? sc.toFixed(3) : '—'}</span></td>
+    <td style="color:var(--text2)">${log.status_code || '—'}</td>
+    <td style="color:var(--text2)">${esc((log.ip_address || '').slice(0, 15))}</td>
+    <td style="color:var(--text2)">${esc((log.message || '').slice(0, 32))}</td>`;
+
+            rowVis(tr);
+            const tb = $('ltb');
+            if (tb.firstChild) tb.insertBefore(tr, tb.firstChild); else tb.appendChild(tr);
+            while (tb.children.length > MAX_LIVE) tb.removeChild(tb.lastChild);
+
+            const vis = tb.querySelectorAll('tr:not(.rh)').length;
+            $('lcb').textContent = `${vis} / ${tb.children.length}`;
+
+            if (locked) $('lscr').scrollTop = 0;
+
+            const ld = $('ldo'); ld.className = 'ld act'; setTimeout(() => ld.className = 'ld', 400);
+        }
+
+        function applyF() {
+            const rows = $('ltb').querySelectorAll('tr');
+            let v = 0;
+            rows.forEach(tr => { if (rowVis(tr)) v++; });
+            $('lcb').textContent = `${v} / ${rows.length}`;
+        }
+
+        function setLvlF(btn, lv) {
+            lvlF = lv;
+            document.querySelectorAll('#lf .ffb').forEach(b => {
+                const bLv = b.dataset.lv;
+                if (b === btn) {
+                    const sfx = lv === 'ERROR' ? '-E' : lv === 'WARN' ? '-W' : lv === 'CRITICAL' ? '-C' : '';
+                    b.className = `ffb fon${sfx}`;
+                } else b.className = 'ffb';
+            });
+            applyF();
+        }
+
+        function toggleAF() { anomF = !anomF; $('af').className = anomF ? 'ffb fon-A' : 'ffb'; applyF() }
+        function updF() { svcF = $('svf').value; applyF() }
+        function clrF() {
+            lvlF = ''; anomF = false; svcF = '';
+            $('svf').value = ''; $('af').className = 'ffb';
+            document.querySelectorAll('#lf .ffb').forEach((b, i) => b.className = i === 0 ? 'ffb fon' : 'ffb');
+            applyF();
+        }
+        function toggleLock() { locked = !locked; const b = $('slbtn'); b.className = `slb${locked ? ' lkd' : ''}`; b.textContent = locked ? '⬇ SCROLL' : '⏸ PAUSED'; }
+
+        /* ── WebSocket ── */
+        function connectWS() {
+            updWS('connecting');
+            ws = new WebSocket(WS_URL);
+            ws.onopen = () => {
+                wsDelay = 1000; updWS('connected');
+                rateT = setInterval(() => {
+                    $('lrate').textContent = rateN > 0 ? `${rateN}/s` : ''; rateN = 0;
+                }, 1000);
+            };
+            ws.onmessage = e => {
+                try { const log = JSON.parse(e.data); if (log.type !== 'pong') pushLog(log); } catch { }
+            };
+            ws.onclose = () => {
+                clearInterval(rateT); updWS('disconnected'); $('lrate').textContent = '';
+                setTimeout(connectWS, wsDelay); wsDelay = Math.min(wsDelay * 2, 30000);
+            };
+            ws.onerror = () => ws.close();
+            setInterval(() => { if (ws?.readyState === 1) ws.send(JSON.stringify({ action: 'ping' })) }, 25000);
+        }
+
+        function updWS(s) {
+            const b = $('wsbadge'), t = $('wstext');
+            b.className = `wsb ${s}`;
+            t.textContent = s === 'connected' ? 'WS ●' : s === 'connecting' ? 'WS…' : 'WS ✕';
+        }
+
+        /* ── Polling ── */
+        function startTick() {
+            clearInterval(tickT); tickVal = 10; $('tick').textContent = tickVal;
+            tickT = setInterval(() => { tickVal--; $('tick').textContent = tickVal; if (tickVal <= 0) refreshAll(); }, 1000);
+        }
+
+        async function refreshAll() {
+            startTick(); $('lu').textContent = nowS();
+            await Promise.allSettled([refreshHealth(), refreshStats(), refreshTimeline(), refreshServices(), refreshAnomalies(), refreshAlerts()]);
+        }
+
+        function manualRefresh() { clearInterval(tickT); refreshAll(); }
+
+        connectWS();
+        refreshAll();
+    </script>
+</body>
+
+</html>

@@ -29,7 +29,7 @@ Using a pipeline for write+trim
   ZADD and ZREMRANGEBYRANK are sent in a single pipeline (one network round-trip),
   making the combined write+trim atomic from a network perspective.
 """
-
+import os
 import json
 import logging
 import time
@@ -42,7 +42,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError, RedisError
 logger = logging.getLogger(__name__)
 
 # ─── Configuration ────────────────────────────────────────────
-REDIS_HOST    = "localhost"
+REDIS_HOST    = os.environ.get("REDIS_HOST", "localhost")
 REDIS_PORT    = 6379
 REDIS_DB      = 0
 SORTED_SET_KEY = "logs:recent"
