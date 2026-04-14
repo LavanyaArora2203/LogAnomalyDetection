@@ -1,0 +1,32 @@
+{
+  "best_model": "IsolationForest",
+  "best_f1": 0.6114101184068891,
+  "best_contamination": 0.05,
+  "trained_at": "2026-04-14T16:41:55.039661+00:00",
+  "models": {
+    "IsolationForest": {
+      "f1_binary": 0.6114101184068891,
+      "f1_macro": 0.7769217710516346,
+      "precision": 0.6241758241758242,
+      "recall": 0.5991561181434599,
+      "flagged_pct": 0.12638888888888888,
+      "train_time_ms": 345.0
+    },
+    "ECOD": {
+      "f1_binary": 0.22996515679442509,
+      "f1_macro": 0.5816291223151118,
+      "precision": 0.66,
+      "recall": 0.13924050632911392,
+      "flagged_pct": 0.027777777777777776,
+      "train_time_ms": 7328.2
+    },
+    "HBOS": {
+      "f1_binary": 0.39543726235741444,
+      "f1_macro": 0.6301740262509247,
+      "precision": 0.3091557669441142,
+      "recall": 0.5485232067510548,
+      "flagged_pct": 0.2336111111111111,
+      "train_time_ms": 5664.3
+    }
+  }
+}
